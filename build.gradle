@@ -1,0 +1,52 @@
+import java.nio.file.*
+
+
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+    id 'com.android.application' version '7.2.2' apply false
+    id 'com.android.library' version '7.2.2' apply false
+    id 'org.jetbrains.kotlin.android' version '1.7.10' apply false
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
+
+task unseal() {
+    doLast {
+        def designatedCompileSdkVersion = project(":app").android.compileSdk
+        def androidHome = System.getenv()["ANDROID_HOME"]
+        def dir = "$androidHome/platforms/android-${designatedCompileSdkVersion}/"
+        def (official, unsealed, using) = (".official .unsealed".split(/\s+/) + "").collect { new File("$dir/android${it}.jar").toPath() }
+        assert Files.exists(using)
+        if (!Files.exists(official)) {
+            println("*** backup `using` to `official` ***")
+            Files.copy(using, official)
+        }
+        if (!Files.exists(unsealed)) {
+            def url = "https://raw.githubusercontent.com/lolicon/UnsealedSdk/master/sdks/android-${designatedCompileSdkVersion}.jar"
+            println("*** download `unsealed` jar from $url ***")
+            unsealed.withOutputStream { disk ->
+                disk << new URL(url).openConnection().inputStream
+            }
+        }
+        Files.delete(using)
+        Files.copy(unsealed, using)
+        println("*** replace `using` with `unsealed` ***")
+        println("*** enjoying unsealed apis: ${designatedCompileSdkVersion} ***")
+    }
+}
+
+task restore() {
+    doLast {
+        def designatedCompileSdkVersion = project(":app").android.compileSdk
+        def androidHome = System.getenv()["ANDROID_HOME"]
+        def dir = "$androidHome/platforms/android-${designatedCompileSdkVersion}/"
+        def (official, _, using) = (".official .unsealed".split(/\s+/) + "").collect { new File("$dir/android${it}.jar").toPath() }
+        assert Files.exists(official)
+        Files.delete(using)
+        Files.copy(official, using)
+        println("*** replace `using` with `official` ***")
+        println("*** black magic sealed: ${designatedCompileSdkVersion} ***")
+    }
+}
