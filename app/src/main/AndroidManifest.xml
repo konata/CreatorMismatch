@@ -15,7 +15,6 @@
 
         <activity
             android:name=".IndexActivity"
-            android:enabled="false"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -25,6 +24,7 @@
 
         <activity
             android:name=".MainActivity"
+            android:enabled="false"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
