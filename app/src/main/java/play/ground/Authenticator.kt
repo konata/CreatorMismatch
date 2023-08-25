@@ -60,7 +60,7 @@ class Authenticator : Service() {
       }
 
 
-      fun labelIntent(): LabeledIntent {
+      fun labeledIntent(): LabeledIntent {
         val intent = Parcel.obtain().apply {
           intentFor<LoginActivity>().setAction("hello").writeToParcel(this, 0)
         }
